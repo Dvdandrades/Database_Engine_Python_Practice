@@ -1,0 +1,9 @@
+[project]
+name = "database-engine-python"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pyparsing>=3.3.2",
+]
