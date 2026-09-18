@@ -126,8 +126,8 @@ class QueryEngine:
             if op == "LIKE":
                 import re
 
-                pattern = value.replace("%", ".*")
-                if not re.match(pattern, record_value):
+                pattern = ".*".join(re.escape(part) for part in value.split("%"))
+                if not re.fullmatch(pattern, record_value):
                     return False
 
         return True
