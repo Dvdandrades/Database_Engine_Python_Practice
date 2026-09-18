@@ -1,21 +1,23 @@
-from typing import List, Optional, Any, Dict
+from typing import Any
+
 
 class BTreeNode:
     def __init__(self, leaf: bool = True):
         self.leaf = leaf
-        self.keys: List[Any] = []
-        self.values: List[Any] = []
-        self.children: List["BTreeNode"] = []
+        self.keys: list[Any] = []
+        self.values: list[Any] = []
+        self.children: list[BTreeNode] = []
+
 
 class BTree:
     def __init__(self, degree: int = 3):
         self.degree = degree
         self.root = BTreeNode(leaf=True)
 
-    def search(self, key: Any) -> Optional[Any]:
+    def search(self, key: Any) -> Any | None:
         return self._search(self.root, key)
 
-    def _search(self, node: BTreeNode, key: Any) -> Optional[Any]:
+    def _search(self, node: BTreeNode, key: Any) -> Any | None:
         i = 0
         while i < len(node.keys) and key > node.keys[i]:
             i += 1
@@ -44,11 +46,11 @@ class BTree:
         mid_key = child.keys[self.degree - 1]
         mid_value = child.values[self.degree - 1]
 
-        new_child.keys = child.keys[self.degree:]
-        new_child.values = child.values[self.degree:]
+        new_child.keys = child.keys[self.degree :]
+        new_child.values = child.values[self.degree :]
 
         if not child.leaf:
-            child.children = child.children[:self.degree]
+            child.children = child.children[: self.degree]
 
         parent.children.insert(index + 1, new_child)
         parent.keys.insert(index, mid_key)
@@ -77,9 +79,10 @@ class BTree:
 
             self._insert_non_full(node.children[i], key, value)
 
+
 class IndexManager:
     def __init__(self):
-        self.indexes: Dict[str, BTree] = {}
+        self.indexes: dict[str, BTree] = {}
 
     def create_index(self, table: str, field: str):
         index_name = f"${table}_${field}_idx"
@@ -90,7 +93,7 @@ class IndexManager:
         if index_name in self.indexes:
             self.indexes[index_name].insert(key, value)
 
-    def search(self, index_name: str, key: Any) -> Optional[Any]:
+    def search(self, index_name: str, key: Any) -> Any | None:
         if index_name in self.indexes:
             return self.indexes[index_name].search(key)
         return None

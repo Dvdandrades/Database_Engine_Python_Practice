@@ -1,20 +1,21 @@
-from typing import Dict, Any, List
-from enum import Enum
 import threading
+from enum import Enum
+
 
 class TransactionState(Enum):
     ACTIVE = "active"
     COMMITTED = "committed"
     ABORTED = "aborted"
 
+
 class Transaction:
     def __init__(self, tx_id: int):
         self.tx_id = tx_id
         self.state = TransactionState.ACTIVE
-        self.operations: List[Dict] = []
+        self.operations: list[dict] = []
         self.locks: set = set()
 
-    def add_operation(self, operation: Dict):
+    def add_operation(self, operation: dict):
         if self.state == TransactionState.ACTIVE:
             self.operations.append(operation)
 
@@ -25,12 +26,13 @@ class Transaction:
         self.state = TransactionState.ABORTED
         self.operations.clear()
 
+
 class TransactionManager:
     def __init__(self):
-        self.transactions: Dict[int, Transaction] = {}
+        self.transactions: dict[int, Transaction] = {}
         self.lock = threading.Lock()
         self.next_tx_id = 1
-        self.write_ahead_log: List[str] = []
+        self.write_ahead_log: list[str] = []
 
     def begin(self) -> Transaction:
         with self.lock:

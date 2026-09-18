@@ -1,13 +1,21 @@
 import re
-from typing import Dict, List, Any, Optional
+
 
 class Query:
-    def __init__(self, operation: str, table: str, conditions: Dict = None, values: Dict = None, fields: List[str] = None):
+    def __init__(
+        self,
+        operation: str,
+        table: str,
+        conditions: dict | None = None,
+        values: dict | None = None,
+        fields: list[str] | None = None,
+    ):
         self.operation = operation
         self.table = table
         self.conditions = conditions or {}
         self.values = values or {}
         self.fields = fields or []
+
 
 class QueryParser:
     def __init__(self):
@@ -42,7 +50,11 @@ class QueryParser:
 
         fields_str, table, conditions_str = match.groups()
 
-        fields = [f.strip() for f in fields_str.split(",")] if fields_str.strip() != "*" else []
+        fields = (
+            [f.strip() for f in fields_str.split(",")]
+            if fields_str.strip() != "*"
+            else []
+        )
         conditions = self._parse_conditions(conditions_str) if conditions_str else {}
 
         return Query("SELECT", table, conditions, fields=fields)
@@ -64,7 +76,7 @@ class QueryParser:
         return Query("INSERT", table, values=values_dict)
 
     def _parse_update_(self, sql: str) -> Query:
-        pattern = r'UPDATE\s+(\w+)\s+SET\s+(.*)'
+        pattern = r"UPDATE\s+(\w+)\s+SET\s+(.*)"
         match = re.match(pattern, sql, re.IGNORECASE)
 
         if not match:
@@ -72,7 +84,7 @@ class QueryParser:
 
         table, rest = match.groups()
 
-        where_split = re.split(r'\s+WHERE\s+', rest, flags=re.IGNORECASE)
+        where_split = re.split(r"\s+WHERE\s+", rest, flags=re.IGNORECASE)
         set_str = where_split[0]
         conditions_str = where_split[1] if len(where_split) > 1 else None
 
@@ -87,7 +99,7 @@ class QueryParser:
         return Query("UPDATE", table, conditions, values)
 
     def _parse_delete_(self, sql: str) -> Query:
-        pattern = r'DELETE\s+FROM\s+(\w+)(?:\s+WHERE\s+(.*))?'
+        pattern = r"DELETE\s+FROM\s+(\w+)(?:\s+WHERE\s+(.*))?"
         match = re.match(pattern, sql, re.IGNORECASE)
 
         if not match:
@@ -98,7 +110,7 @@ class QueryParser:
 
         return Query("DELETE", table, conditions)
 
-    def _parse_conditions(self, cond_str: str) -> Dict:
+    def _parse_conditions(self, cond_str: str) -> dict:
         conditions = {}
 
         if not cond_str:

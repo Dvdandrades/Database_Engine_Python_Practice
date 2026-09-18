@@ -1,8 +1,7 @@
-import os
-import struct
 import json
+import struct
 from pathlib import Path
-from typing import Any, Optional, List, Dict
+
 
 class Page:
     PAGE_SIZE = 4096
@@ -12,10 +11,11 @@ class Page:
         self.data = bytearray(self.PAGE_SIZE)
 
     def read(self, offset: int, size: int) -> bytes:
-        return bytes(self.data[offset:offset + size])
+        return bytes(self.data[offset : offset + size])
 
     def write(self, offset: int, data: bytes):
-        self.data[offset:offset + len(data)] = data
+        self.data[offset : offset + len(data)] = data
+
 
 class StorageEngine:
     def __init__(self, db_path: str):
@@ -29,9 +29,9 @@ class StorageEngine:
 
     def _init_db(self):
         with open(self.data_file, "wb") as f:
-            f.write(struct.pack('>I', 1))
+            f.write(struct.pack(">I", 1))
 
-    def write_record(self, key: str, value: Dict) -> int:
+    def write_record(self, key: str, value: dict) -> int:
         data = json.dumps(value).encode("utf-8")
 
         with open(self.data_file, "ab") as f:
@@ -41,7 +41,7 @@ class StorageEngine:
             f.write(data)
             return f.tell()
 
-    def read_all_records(self) -> Dict[str, Dict]:
+    def read_all_records(self) -> dict[str, dict]:
         records = {}
 
         with open(self.data_file, "rb") as f:
@@ -63,11 +63,11 @@ class StorageEngine:
 
         return records
 
-    def get(self, key: str) -> Optional[Dict]:
+    def get(self, key: str) -> dict | None:
         records = self.read_all_records()
         return records.get(key)
 
-    def put(self, key: str, value: Dict):
+    def put(self, key: str, value: dict):
         self.write_record(key, value)
 
     def delete(self, key: str):
@@ -76,7 +76,7 @@ class StorageEngine:
             del records[key]
             self._rewrite_db(records)
 
-    def _rewrite_db(self, records: Dict):
+    def _rewrite_db(self, records: dict):
         with open(self.data_file, "wb") as f:
             f.write(struct.pack(">I", 1))
             for key, value in records.items():
@@ -85,4 +85,3 @@ class StorageEngine:
                 f.write(key.encode("utf-8"))
                 f.write(struct.pack(">I", len(data)))
                 f.write(data)
-    

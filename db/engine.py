@@ -1,12 +1,14 @@
-from typing import List, Dict, Any, Optional
-from .storage import StorageEngine
+from typing import Any
+
 from .parser import Query, QueryParser
+from .storage import StorageEngine
+
 
 class QueryEngine:
     def __init__(self, storage: StorageEngine):
         self.storage = storage
         self.parser = QueryParser()
-        self.tables: Dict[str, Dict] = {}
+        self.tables: dict[str, dict] = {}
 
     def execute(self, sql: str) -> Any:
         query = self.parser.parse(sql)
@@ -22,7 +24,7 @@ class QueryEngine:
         elif query.operation == "CREATE":
             return self._execute_create(query)
 
-    def _execute_select(self, query: Query) -> List[Dict]:
+    def _execute_select(self, query: Query) -> list[dict]:
         table_name = f"${query.table}_table"
 
         if table_name not in self.tables:
@@ -34,13 +36,15 @@ class QueryEngine:
         for record in records.values():
             if self._matches_conditions(record, query.conditions):
                 if query.fields:
-                    results.append({k: v for k, v in record.items() if k in query.fields})
+                    results.append(
+                        {k: v for k, v in record.items() if k in query.fields}
+                    )
                 else:
                     results.append(record)
 
         return results
 
-    def _execute_insert(self, query: Query) -> Dict:
+    def _execute_insert(self, query: Query) -> dict:
         table_name = f"${query.table}_table"
 
         if table_name not in self.tables:
@@ -55,7 +59,7 @@ class QueryEngine:
 
         return {"inserted": 1, "id": record_id}
 
-    def _execute_update(self, query: Query) -> Dict:
+    def _execute_update(self, query: Query) -> dict:
         table_name = f"${query.table}_table"
 
         if table_name not in self.tables:
@@ -72,7 +76,7 @@ class QueryEngine:
 
         return {"updated": updated}
 
-    def _execute_delete(self, query: Query) -> Dict:
+    def _execute_delete(self, query: Query) -> dict:
         table_name = f"${query.table}_table"
 
         if table_name not in self.tables:
@@ -82,7 +86,8 @@ class QueryEngine:
         deleted = 0
 
         to_delete = [
-            rid for rid, record in records.items()
+            rid
+            for rid, record in records.items()
             if self._matches_conditions(record, query.conditions)
         ]
 
@@ -92,7 +97,7 @@ class QueryEngine:
 
         return {"deleted": deleted}
 
-    def _execute_create(self, query: Query) -> Dict:
+    def _execute_create(self, query: Query) -> dict:
         table_name = f"${query.table}_table"
 
         if table_name in self.tables:
@@ -102,7 +107,7 @@ class QueryEngine:
 
         return {"created": 1}
 
-    def _matches_conditions(self, record: Dict, conditions: Dict) -> bool:
+    def _matches_conditions(self, record: dict, conditions: dict) -> bool:
         if not conditions:
             return True
 
@@ -120,6 +125,7 @@ class QueryEngine:
                 return False
             if op == "LIKE":
                 import re
+
                 pattern = value.replace("%", ".*")
                 if not re.match(pattern, record_value):
                     return False
