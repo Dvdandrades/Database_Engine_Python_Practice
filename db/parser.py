@@ -18,9 +18,20 @@ class QueryParser:
 
         for op in self.operations:
             if sql.upper().startswith(op):
-                return getattr(self, f"_parse_${op.lower()}_")(sql)
+                return getattr(self, f"_parse_{op.lower()}_")(sql)
 
-        raise ValueError(f"Unknown operation: ${sql}")
+        raise ValueError(f"Unknown operation: {sql}")
+
+    def _parse_create_(self, sql: str) -> Query:
+        pattern = r"CREATE TABLE\s+(\w+)"
+        match = re.match(pattern, sql, re.IGNORECASE)
+
+        if not match:
+            raise ValueError("Invalid CREATE syntax")
+
+        table = match.group(1)
+
+        return Query("CREATE", table)
 
     def _parse_select_(self, sql: str) -> Query:
         pattern = r"SELECT\s+(.*?)\s+FROM\s+(\w+)(?:\s+WHERE\s+(.*))?"
@@ -53,13 +64,17 @@ class QueryParser:
         return Query("INSERT", table, values=values_dict)
 
     def _parse_update_(self, sql: str) -> Query:
-        pattern = r'UPDATE\s+(\w+)\s+SET\s+(.*?)(?:\s+WHERE\s+(.*))?'
+        pattern = r'UPDATE\s+(\w+)\s+SET\s+(.*)'
         match = re.match(pattern, sql, re.IGNORECASE)
 
         if not match:
             raise ValueError("Invalid UPDATE syntax")
 
-        table, set_str, conditions_str = match.groups()
+        table, rest = match.groups()
+
+        where_split = re.split(r'\s+WHERE\s+', rest, flags=re.IGNORECASE)
+        set_str = where_split[0]
+        conditions_str = where_split[1] if len(where_split) > 1 else None
 
         set_pairs = [s.strip() for s in set_str.split(",")]
         values = {}
