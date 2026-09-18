@@ -77,7 +77,7 @@ class TransactionManager:
         self.write_ahead_log.append(message)
 
         if len(self.write_ahead_log) > 1000:
-            self.write_ahead_log = self.write_ahead_log[-500]
+            self.write_ahead_log = self.write_ahead_log[-500:]
 
     def get_transaction(self, tx_id: int) -> Transaction:
         return self.transactions.get(tx_id)
