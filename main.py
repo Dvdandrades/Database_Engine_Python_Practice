@@ -30,5 +30,11 @@ print("Update: ", result)
 result = engine.execute("SELECT * FROM users WHERE name = 'David'")
 print("Select with WHERE and UPDATE: ", result)
 
+result = engine.execute("SELECT * FROM users WHERE email LIKE '%@example.com'")
+print("Select with LIKE (suffix): ", result)
+
+result = engine.execute("SELECT * FROM users WHERE name LIKE 'Da%'")
+print("Select with LIKE (prefix): ", result)
+
 result = engine.execute("DELETE FROM users WHERE name = 'Juan'")
 print("Delete: ", result)
