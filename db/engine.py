@@ -8,7 +8,7 @@ class QueryEngine:
     def __init__(self, storage: StorageEngine):
         self.storage = storage
         self.parser = QueryParser()
-        self.tables: dict[str, dict] = {}
+        self.tables: dict[str, dict] = self.storage.get("__tables__") or {}
 
     def execute(self, sql: str) -> Any:
         query = self.parser.parse(sql)
@@ -16,13 +16,16 @@ class QueryEngine:
         if query.operation == "SELECT":
             return self._execute_select(query)
         elif query.operation == "INSERT":
-            return self._execute_insert(query)
+            result = self._execute_insert(query)
         elif query.operation == "UPDATE":
-            return self._execute_update(query)
+            result = self._execute_update(query)
         elif query.operation == "DELETE":
-            return self._execute_delete(query)
+            result = self._execute_delete(query)
         elif query.operation == "CREATE":
-            return self._execute_create(query)
+            result = self._execute_create(query)
+
+        self.storage.put("__tables__", self.tables)
+        return result
 
     def _execute_select(self, query: Query) -> list[dict]:
         table_name = f"${query.table}_table"
