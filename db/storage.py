@@ -32,11 +32,12 @@ class StorageEngine:
             f.write(struct.pack(">I", 1))
 
     def write_record(self, key: str, value: dict) -> int:
+        key_bytes = key.encode("utf-8")
         data = json.dumps(value).encode("utf-8")
 
         with open(self.data_file, "ab") as f:
-            f.write(struct.pack(">I", len(key)))
-            f.write(key.encode("utf-8"))
+            f.write(struct.pack(">I", len(key_bytes)))
+            f.write(key_bytes)
             f.write(struct.pack(">I", len(data)))
             f.write(data)
             return f.tell()
@@ -80,8 +81,9 @@ class StorageEngine:
         with open(self.data_file, "wb") as f:
             f.write(struct.pack(">I", 1))
             for key, value in records.items():
+                key_bytes = key.encode("utf-8")
                 data = json.dumps(value).encode("utf-8")
-                f.write(struct.pack(">I", len(key)))
-                f.write(key.encode("utf-8"))
+                f.write(struct.pack(">I", len(key_bytes)))
+                f.write(key_bytes)
                 f.write(struct.pack(">I", len(data)))
                 f.write(data)
