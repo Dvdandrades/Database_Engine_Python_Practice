@@ -78,7 +78,9 @@ class StorageEngine:
             self._rewrite_db(records)
 
     def _rewrite_db(self, records: dict):
-        with open(self.data_file, "wb") as f:
+        temp_file = self.db_path / "data_db.tmp"
+
+        with open(temp_file, "wb") as f:
             f.write(struct.pack(">I", 1))
             for key, value in records.items():
                 key_bytes = key.encode("utf-8")
@@ -87,3 +89,5 @@ class StorageEngine:
                 f.write(key_bytes)
                 f.write(struct.pack(">I", len(data)))
                 f.write(data)
+
+            temp_file.replace(self.data_file)
