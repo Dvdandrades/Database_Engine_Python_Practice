@@ -111,3 +111,10 @@ class IndexManager:
 
     def get_indexed_fields(self, table: str) -> set[str]:
         return self.table_fields.get(table, set())
+
+    def rebuild_index(self, table: str, field: str, records: dict):
+        index_name = f"${table}_${field}_idx"
+        self.indexes[index_name] = BTree()
+        for rid, record in records.items():
+            if field in record:
+                self.insert(index_name, record[field], rid)
