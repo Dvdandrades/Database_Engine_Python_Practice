@@ -31,22 +31,22 @@ class QueryParser:
         raise ValueError(f"Unknown operation: {sql}")
 
     def _parse_create_(self, sql: str) -> Query:
-        pattern = r"CREATE TABLE\s+(\w+)"
+        pattern = r"^CREATE\s+TABLE\s+(\w+)\s*;?$"
         match = re.match(pattern, sql, re.IGNORECASE)
 
         if not match:
-            raise ValueError("Invalid CREATE syntax")
+            raise ValueError(f"Invalid CREATE syntax: '{sql}'")
 
         table = match.group(1)
 
         return Query("CREATE", table)
 
     def _parse_select_(self, sql: str) -> Query:
-        pattern = r"SELECT\s+(.*?)\s+FROM\s+(\w+)(?:\s+WHERE\s+(.*))?"
+        pattern = r"^SELECT\s+(.*?)\s+FROM\s+(\w+)(?:\s+WHERE\s+(.*))?\s*;?$"
         match = re.match(pattern, sql, re.IGNORECASE)
 
         if not match:
-            raise ValueError("Invalid SELECT syntax")
+            raise ValueError(f"Invalid SELECT syntax: '{sql}'")
 
         fields_str, table, conditions_str = match.groups()
 
@@ -60,27 +60,30 @@ class QueryParser:
         return Query("SELECT", table, conditions, fields=fields)
 
     def _parse_insert_(self, sql: str) -> Query:
-        pattern = r"INSERT\s+INTO\s+(\w+)\s*\((.*?)\)\s*VALUES\s*\((.*?)\)"
+        pattern = r"^INSERT\s+INTO\s+(\w+)\s*\((.*?)\)\s*VALUES\s*\((.*?)\)\s*;?$"
         match = re.match(pattern, sql, re.IGNORECASE)
 
         if not match:
-            raise ValueError("Invalid INSERT syntax")
+            raise ValueError(f"Invalid INSERT syntax: '{sql}'")
 
         table, fields_str, values_str = match.groups()
 
         fields = [f.strip() for f in fields_str.split(",")]
         values = [v.strip().strip("'\"") for v in values_str.split(",")]
 
+        if len(fields) != len(values):
+            raise ValueError("Mismatched fields and values count in INSERT statement")
+
         values_dict = dict(zip(fields, values))
 
         return Query("INSERT", table, values=values_dict)
 
     def _parse_update_(self, sql: str) -> Query:
-        pattern = r"UPDATE\s+(\w+)\s+SET\s+(.*)"
+        pattern = r"^UPDATE\s+(\w+)\s+SET\s+(.*)\s*;?$"
         match = re.match(pattern, sql, re.IGNORECASE)
 
         if not match:
-            raise ValueError("Invalid UPDATE syntax")
+            raise ValueError(f"Invalid UPDATE syntax: '{sql}'")
 
         table, rest = match.groups()
 
@@ -91,7 +94,9 @@ class QueryParser:
         set_pairs = [s.strip() for s in set_str.split(",")]
         values = {}
         for pair in set_pairs:
-            key, val = pair.split("=")
+            if "=" not in pair:
+                raise ValueError(f"Invalid SET pair: '{pair}'")
+            key, val = pair.split("=", 1)
             values[key.strip()] = val.strip().strip("'\"")
 
         conditions = self._parse_conditions(conditions_str) if conditions_str else {}
@@ -99,11 +104,11 @@ class QueryParser:
         return Query("UPDATE", table, conditions, values)
 
     def _parse_delete_(self, sql: str) -> Query:
-        pattern = r"DELETE\s+FROM\s+(\w+)(?:\s+WHERE\s+(.*))?"
+        pattern = r"^DELETE\s+FROM\s+(\w+)(?:\s+WHERE\s+(.*))?\s*;?$"
         match = re.match(pattern, sql, re.IGNORECASE)
 
         if not match:
-            raise ValueError("Invalid DELETE syntax")
+            raise ValueError(f"Invalid DELETE syntax: '{sql}'")
 
         table, conditions_str = match.groups()
         conditions = self._parse_conditions(conditions_str) if conditions_str else {}
@@ -116,10 +121,16 @@ class QueryParser:
         if not cond_str:
             return conditions
 
-        pattern = r'(\w+)\s*(=|!=|<|>|<=|>=|LIKE)\s*["\']?([^"\']+)["\']?'
+        cond_pattern = r'(\w+)\s*(=|!=|<|>|<=|>=|LIKE)\s*(?:(["\'])(.*?)\3|(\w+))'
 
-        for match in re.finditer(pattern, cond_str):
-            field, op, value = match.groups()
-            conditions[field] = {"op": op, "value": value}
+        matches = list(re.finditer(cond_pattern, cond_str, re.IGNORECASE))
+
+        if not matches:
+            raise ValueError(f"Invalid WHERE clause syntax: '{cond_str}'")
+
+        for match in matches:
+            field, op, quote, quoted_value, unquoted_value = match.groups()
+            value = quoted_value if quote else unquoted_value
+            conditions[field] = {"op": op.upper(), "value": value}
 
         return conditions

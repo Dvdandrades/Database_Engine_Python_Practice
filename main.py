@@ -19,7 +19,7 @@ print("Insert", result)
 result = engine.execute("SELECT * FROM users")
 print("Select all: ", result)
 
-result = engine.execute("SELECT * FROM users WHERE name = 'David")
+result = engine.execute("SELECT * FROM users WHERE name = 'David'")
 print("Select with WHERE: ", result)
 
 result = engine.execute(
