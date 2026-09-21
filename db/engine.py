@@ -35,7 +35,10 @@ class QueryEngine:
         table_name = f"${query.table}_table"
 
         if table_name not in self.tables:
-            return {"created_index": 0, "error": f"Table '{query.table}' does not exist"}
+            return {
+                "created_index": 0,
+                "error": f"Table '{query.table}' does not exist",
+            }
 
         field = query.fields[0]
         index_name = self.index_manager.create_index(query.table, field)

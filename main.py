@@ -6,6 +6,9 @@ engine = QueryEngine(StorageEngine("./testdb"))
 result = engine.execute("CREATE TABLE users")
 print("Create:", result)
 
+result = engine.execute("CREATE INDEX ON users (name)")
+print("Create Index On: ", result)
+
 result = engine.execute(
     "INSERT INTO users (name, email) VALUES ('David', 'david@example.com')"
 )
