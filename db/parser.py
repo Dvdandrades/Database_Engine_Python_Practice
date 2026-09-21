@@ -31,13 +31,20 @@ class QueryParser:
         raise ValueError(f"Unknown operation: {sql}")
 
     def _parse_create_(self, sql: str) -> Query:
-        pattern = r"^CREATE\s+TABLE\s+(\w+)\s*;?$"
-        match = re.match(pattern, sql, re.IGNORECASE)
+        idx_pattern = r"^CREATE\s+INDEX\s+(?:\w+\s+)?ON\s+(\w+)\s*\(\s*(\w+)\s*\)\s*;?$"
+        idx_match = re.match(idx_pattern, sql, re.IGNORECASE)
 
-        if not match:
+        if idx_match:
+            table, field = idx_match.groups()
+            return Query("CREATE_INDEX", table, fields=[field])
+
+        table_pattern = r"^CREATE\s+TABLE\s+(\w+)\s*;?$"
+        table_match = re.match(table_pattern, sql, re.IGNORECASE)
+
+        if not table_match:
             raise ValueError(f"Invalid CREATE syntax: '{sql}'")
 
-        table = match.group(1)
+        table = table_match.group(1)
 
         return Query("CREATE", table)
 
