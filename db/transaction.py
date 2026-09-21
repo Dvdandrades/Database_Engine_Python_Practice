@@ -12,19 +12,19 @@ class Transaction:
     def __init__(self, tx_id: int):
         self.tx_id = tx_id
         self.state = TransactionState.ACTIVE
-        self.operations: list[dict] = []
+        self.undo_actions: list[dict] = []
         self.locks: set = set()
 
-    def add_operation(self, operation: dict):
+    def add_undo_action(self, operation: dict):
         if self.state == TransactionState.ACTIVE:
-            self.operations.append(operation)
+            self.undo_actions.append(operation)
 
     def commit(self):
         self.state = TransactionState.COMMITTED
+        self.undo_actions.clear()
 
     def abort(self):
         self.state = TransactionState.ABORTED
-        self.operations.clear()
 
 
 class TransactionManager:
@@ -39,6 +39,7 @@ class TransactionManager:
             tx = Transaction(self.next_tx_id)
             self.transactions[self.next_tx_id] = tx
             self.next_tx_id += 1
+            self._write_log(f"BEGIN {tx.tx_id}")
             return tx
 
     def commit(self, tx_id: int) -> bool:
@@ -51,27 +52,27 @@ class TransactionManager:
             if tx.state != TransactionState.ACTIVE:
                 return False
 
-            self._write_log(f"COMMIT ${tx_id}")
+            self._write_log(f"COMMIT {tx_id}")
 
             tx.commit()
 
             return True
 
-    def abort(self, tx_id: int) -> bool:
+    def abort(self, tx_id: int) -> Transaction | None:
         with self.lock:
             if tx_id not in self.transactions:
-                return False
+                return None
 
             tx = self.transactions[tx_id]
 
             if tx.state != TransactionState.ACTIVE:
-                return False
+                return None
 
-            self._write_log(f"ABORT ${tx_id}")
+            self._write_log(f"ABORT {tx_id}")
 
             tx.abort()
 
-            return True
+            return tx
 
     def _write_log(self, message: str):
         self.write_ahead_log.append(message)
@@ -79,5 +80,5 @@ class TransactionManager:
         if len(self.write_ahead_log) > 1000:
             self.write_ahead_log = self.write_ahead_log[-500:]
 
-    def get_transaction(self, tx_id: int) -> Transaction:
+    def get_transaction(self, tx_id: int) -> Transaction | None:
         return self.transactions.get(tx_id)
