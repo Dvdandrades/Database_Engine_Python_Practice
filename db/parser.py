@@ -5,7 +5,7 @@ class Query:
     def __init__(
         self,
         operation: str,
-        table: str,
+        table: str = "",
         conditions: dict | None = None,
         values: dict | None = None,
         fields: list[str] | None = None,
@@ -19,7 +19,17 @@ class Query:
 
 class QueryParser:
     def __init__(self):
-        self.operations = ["SELECT", "INSERT", "UPDATE", "DELETE", "CREATE"]
+        self.operations = [
+            "SELECT",
+            "INSERT",
+            "UPDATE",
+            "DELETE",
+            "CREATE",
+            "BEGIN",
+            "COMMIT",
+            "ROLLBACK",
+            "ABORT",
+        ]
 
     def parse(self, sql: str) -> Query:
         sql = sql.strip()
@@ -29,6 +39,18 @@ class QueryParser:
                 return getattr(self, f"_parse_{op.lower()}_")(sql)
 
         raise ValueError(f"Unknown operation: {sql}")
+
+    def _parse_begin_(self, sql: str) -> Query:
+        return Query("BEGIN")
+
+    def _parse_commit_(self, sql: str) -> Query:
+        return Query("COMMIT")
+
+    def _parse_rollback_(self, sql: str) -> Query:
+        return Query("ROLLBACK")
+
+    def _parse_abort_(self, sql: str) -> Query:
+        return Query("ROLLBACK")
 
     def _parse_create_(self, sql: str) -> Query:
         idx_pattern = r"^CREATE\s+INDEX\s+(?:\w+\s+)?ON\s+(\w+)\s*\(\s*(\w+)\s*\)\s*;?$"

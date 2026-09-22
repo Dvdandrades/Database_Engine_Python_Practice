@@ -19,6 +19,20 @@ result = engine.execute(
 )
 print("Insert", result)
 
+engine.execute("BEGIN")
+engine.execute(
+    "INSERT INTO users (name, email) VALUES ('Temporal', 'temp@example.com')"
+)
+print("Inside tx:", engine.execute("SELECT * FROM users"))
+
+engine.execute("ROLLBACK")
+print("After ROLLBACK:", engine.execute("SELECT * FROM users"))
+
+engine.execute("BEGIN")
+engine.execute("INSERT INTO users (name, email) VALUES ('Juan', 'juan@example.com')")
+engine.execute("COMMIT")
+print("After COMMIT:", engine.execute("SELECT * FROM users"))
+
 result = engine.execute("SELECT * FROM users")
 print("Select all: ", result)
 

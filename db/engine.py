@@ -3,6 +3,7 @@ from typing import Any
 from .index import IndexManager
 from .parser import Query, QueryParser
 from .storage import StorageEngine
+from .transaction import Transaction, TransactionManager
 
 
 class QueryEngine:
@@ -11,25 +12,93 @@ class QueryEngine:
         self.parser = QueryParser()
         self.tables: dict[str, dict] = self.storage.get("__tables__") or {}
         self.index_manager = IndexManager()
+        self.transaction_manager = TransactionManager()
+        self.current_tx: Transaction | None = None
 
     def execute(self, sql: str) -> Any:
         query = self.parser.parse(sql)
 
-        if query.operation == "SELECT":
-            return self._execute_select(query)
-        elif query.operation == "INSERT":
-            result = self._execute_insert(query)
-        elif query.operation == "UPDATE":
-            result = self._execute_update(query)
-        elif query.operation == "DELETE":
-            result = self._execute_delete(query)
-        elif query.operation == "CREATE":
-            result = self._execute_create(query)
-        elif query.operation == "CREATE_INDEX":
-            result = self._execute_create_index(query)
+        if query.operation == "BEGIN":
+            return self._execute_begin()
+        elif query.operation == "COMMIT":
+            return self._execute_commit()
+        elif query.operation == "ROLLBACK":
+            return self._execute_rollback()
 
+        autocommit = self.current_tx is None
+        if autocommit:
+            self.current_tx = self.transaction_manager.begin()
+
+        try:
+            if query.operation == "SELECT":
+                return self._execute_select(query)
+            elif query.operation == "INSERT":
+                result = self._execute_insert(query)
+            elif query.operation == "UPDATE":
+                result = self._execute_update(query)
+            elif query.operation == "DELETE":
+                result = self._execute_delete(query)
+            elif query.operation == "CREATE":
+                result = self._execute_create(query)
+            elif query.operation == "CREATE_INDEX":
+                result = self._execute_create_index(query)
+            else:
+                raise ValueError(f"Unsupported operation: {query.operation}")
+
+            if autocommit:
+                self._execute_commit()
+
+            return result
+        except Exception:
+            if autocommit:
+                self._execute_rollback()
+            raise
+
+    def _execute_begin(self) -> dict:
+        if self.current_tx is not None:
+            return {"error": "Transaction already active"}
+        tx = self.transaction_manager.begin()
+        self.current_tx = tx
+        return {"transaction": tx.tx_id, "status": "BEGIN"}
+
+    def _execute_commit(self) -> dict:
+        if self.current_tx is None:
+            return {"error": "No active transaction to commit"}
+        tx_id = self.current_tx.tx_id
+        self.transaction_manager.commit(tx_id)
         self.storage.put("__tables__", self.tables)
-        return result
+        self.current_tx = None
+        return {"transaction": tx_id, "status": "COMMITTED"}
+
+    def _execute_rollback(self) -> dict:
+        if self.current_tx is None:
+            return {"error": "No active transaction to rollback"}
+
+        tx = self.current_tx
+        affected_tables = set()
+
+        for action in reversed(tx.undo_actions):
+            tbl = action["table"]
+            raw_tbl = action["raw_table"]
+            affected_tables.add(raw_tbl)
+
+            if action["type"] == "INSERT":
+                rid = action["id"]
+                if rid in self.tables.get(tbl, {}):
+                    del self.tables[tbl][rid]
+            elif action["type"] == "UPDATE" or action["type"] == "DELETE":
+                rid = action["id"]
+                self.tables[tbl][rid] = action["old_record"]
+
+        for raw_tbl in affected_tables:
+            tbl_name = f"${raw_tbl}_table"
+            records = self.tables.get(tbl_name, {})
+            for field in self.index_manager.get_indexed_fields(raw_tbl):
+                self.index_manager.rebuild_index(raw_tbl, field, records)
+
+        self.transaction_manager.abort(tx.tx_id)
+        self.current_tx = None
+        return {"transaction": tx.tx_id, "status": "ROLLED_BACK"}
 
     def _execute_create_index(self, query: Query) -> dict:
         table_name = f"${query.table}_table"
@@ -92,6 +161,17 @@ class QueryEngine:
 
         records[record_id] = record
 
+        if self.current_tx:
+            self.current_tx.add_undo_action(
+                {
+                    "type": "INSERT",
+                    "table": table_name,
+                    "raw_table": query.table,
+                    "id": record_id,
+                    "record": record,
+                }
+            )
+
         indexed_fields = self.index_manager.get_indexed_fields(query.table)
         for field in indexed_fields:
             if field in record:
@@ -109,11 +189,29 @@ class QueryEngine:
         records = self.tables[table_name]
         updated = 0
 
-        for record in records.values():
+        for rid, record in records.items():
             if self._matches_conditions(record, query.conditions):
+                old_record = record.copy()
                 for key, value in query.values.items():
                     record[key] = value
+
+                if self.current_tx:
+                    self.current_tx.add_undo_action(
+                        {
+                            "type": "UPDATE",
+                            "table": table_name,
+                            "raw_table": query.table,
+                            "id": rid,
+                            "old_record": old_record,
+                            "new_record": record.copy(),
+                        }
+                    )
                 updated += 1
+
+        indexed_fields = self.index_manager.get_indexed_fields(query.table)
+        if indexed_fields and updated > 0:
+            for field in indexed_fields:
+                self.index_manager.rebuild_index(query.table, field, records)
 
         return {"updated": updated}
 
@@ -133,8 +231,24 @@ class QueryEngine:
         ]
 
         for rid in to_delete:
+            old_record = records[rid].copy()
             del records[rid]
+            if self.current_tx:
+                self.current_tx.add_undo_action(
+                    {
+                        "type": "DELETE",
+                        "table": table_name,
+                        "raw_table": query.table,
+                        "id": rid,
+                        "old_record": old_record,
+                    }
+                )
             deleted += 1
+
+        indexed_fields = self.index_manager.get_indexed_fields(query.table)
+        if indexed_fields and deleted > 0:
+            for field in indexed_fields:
+                self.index_manager.rebuild_index(query.table, field, records)
 
         return {"deleted": deleted}
 
