@@ -22,6 +22,12 @@ Run the primary application script directly through `uv`:
 uv run main.py
 ```
 
+## Running Test
+
+```bash
+uv run pytest
+```
+
 ## Usage Example
 
 ```bash
