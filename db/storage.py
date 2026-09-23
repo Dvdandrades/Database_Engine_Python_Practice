@@ -1,6 +1,9 @@
 import json
 import struct
 from pathlib import Path
+from typing import Any
+
+TOMBSTONE = b"__TOMBSTONE__"
 
 
 class Page:
@@ -23,71 +26,121 @@ class StorageEngine:
         self.db_path.mkdir(parents=True, exist_ok=True)
         self.data_file = self.db_path / "data.db"
         self.log_file = self.db_path / "wal.log"
+        self.keydir: dict[str, tuple[int, int]] = {}
 
         if not self.data_file.exists():
             self._init_db()
+        else:
+            self._build_keydir()
 
     def _init_db(self):
         with open(self.data_file, "wb") as f:
             f.write(struct.pack(">I", 1))
+        self._build_keydir()
 
-    def write_record(self, key: str, value: dict) -> int:
+    def _build_keydir(self):
+        self.keydir.clear()
+        if not self.data_file.exists():
+            return
+
+        with open(self.data_file, "rb") as f:
+            f.read(4)
+            while True:
+                offset = f.tell()
+                key_len_bytes = f.read(4)
+                if len(key_len_bytes) < 4:
+                    break
+
+                key_len = struct.unpack(">I", key_len_bytes)[0]
+                key = f.read(key_len).decode("utf-8")
+
+                val_len = struct.unpack(">I", f.read(4))[0]
+                val_bytes = f.read(val_len)
+
+                total_len = f.tell() - offset
+
+                if val_bytes == TOMBSTONE:
+                    self.keydir.pop(key, None)
+                else:
+                    self.keydir[key] = (offset, total_len)
+
+    def write_wal(self, op: str, key: str, value: Any = None):
+        with open(self.log_file, "a", encoding="utf-8") as f:
+            entry = json.dumps({"op": op, "key": key, "val": value})
+            f.write(f"{entry}\n")
+
+    def clear_wal(self):
+        if self.log_file.exists():
+            self.log_file.unlink()
+
+    def get(self, key: str) -> dict | None:
+        if key not in self.keydir:
+            return None
+
+        offset, _ = self.keydir[key]
+        with open(self.data_file, "rb") as f:
+            f.seek(offset)
+            key_len = struct.unpack(">I", f.read(4))[0]
+            f.read(key_len)
+            val_len = struct.unpack(">I", f.read(4))[0]
+            val_data = f.read(val_len)
+            return json.loads(val_data.decode("utf-8"))
+
+    def put(self, key: str, value: dict):
+        self.write_wal("PUT", key, value)
+
+        data_bytes = json.dumps(value).encode("utf-8")
         key_bytes = key.encode("utf-8")
-        data = json.dumps(value).encode("utf-8")
+
+        with open(self.data_file, "ab") as f:
+            offset = f.tell()
+            f.write(struct.pack(">I", len(key_bytes)))
+            f.write(key_bytes)
+            f.write(struct.pack(">I", len(data_bytes)))
+            f.write(data_bytes)
+            total_len = f.tell() - offset
+
+        self.keydir[key] = (offset, total_len)
+
+    def delete(self, key: str):
+        if key not in self.keydir:
+            return
+
+        self.write_wal("DELETE", key)
+        key_bytes = key.encode("utf-8")
 
         with open(self.data_file, "ab") as f:
             f.write(struct.pack(">I", len(key_bytes)))
             f.write(key_bytes)
-            f.write(struct.pack(">I", len(data)))
-            f.write(data)
-            return f.tell()
+            f.write(struct.pack(">I", len(TOMBSTONE)))
+            f.write(TOMBSTONE)
 
-    def read_all_records(self) -> dict[str, dict]:
-        records = {}
+        del self.keydir[key]
 
-        with open(self.data_file, "rb") as f:
-            f.read(4)
-
-            while True:
-                key_len_data = f.read(4)
-                if len(key_len_data) < 4:
-                    break
-
-                key_len = struct.unpack(">I", key_len_data)[0]
-                key = f.read(key_len).decode("utf-8")
-
-                val_len = struct.unpack(">I", f.read(4))[0]
-                data = f.read(val_len)
-                value = json.loads(data.decode("utf-8"))
-
-                records[key] = value
-
-        return records
-
-    def get(self, key: str) -> dict | None:
-        records = self.read_all_records()
-        return records.get(key)
-
-    def put(self, key: str, value: dict):
-        self.write_record(key, value)
-
-    def delete(self, key: str):
-        records = self.read_all_records()
-        if key in records:
-            del records[key]
-            self._rewrite_db(records)
-
-    def _rewrite_db(self, records: dict):
+    def compact(self):
         temp_file = self.db_path / "data_db.tmp"
+        new_keydir = {}
 
-        with open(temp_file, "wb") as f:
-            f.write(struct.pack(">I", 1))
-            for key, value in records.items():
-                key_bytes = key.encode("utf-8")
-                data = json.dumps(value).encode("utf-8")
-                f.write(struct.pack(">I", len(key_bytes)))
-                f.write(key_bytes)
-                f.write(struct.pack(">I", len(data)))
-                f.write(data)
+        with open(temp_file, "wb") as f_out:
+            f_out.write(struct.pack(">I", 1))
 
-            temp_file.replace(self.data_file)
+            with open(self.data_file, "rb") as f_in:
+                for key, (offset, _) in self.keydir.items():
+                    f_in.seek(offset)
+                    key_len = struct.unpack(">I", f_in.read(4))[0]
+                    k_bytes = f_in.read(key_len)
+                    val_len = struct.unpack(">I", f_in.read(4))[0]
+                    val_bytes = f_in.read(val_len)
+
+                    new_offset = f_out.tell()
+                    f_out.write(struct.pack(">I", len(k_bytes)))
+                    f_out.write(k_bytes)
+                    f_out.write(struct.pack(">I", len(val_bytes)))
+                    f_out.write(val_bytes)
+
+                    total_len = f_out.tell() - new_offset
+                    new_keydir[key] = (new_offset, total_len)
+
+        temp_file.replace(self.data_file)
+        self.keydi = new_keydir
+        self.clear_wal()
