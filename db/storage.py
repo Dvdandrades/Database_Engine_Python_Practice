@@ -142,5 +142,5 @@ class StorageEngine:
                     new_keydir[key] = (new_offset, total_len)
 
         temp_file.replace(self.data_file)
-        self.keydi = new_keydir
+        self.keydir = new_keydir
         self.clear_wal()
