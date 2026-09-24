@@ -1,2 +1,0 @@
-{"op": "PUT", "key": "__tables__", "val": {"$users_table": {}}}
-{"op": "PUT", "key": "__tables__", "val": {"$users_table": {"1": {"id": 1, "name": "David", "email": "david@example.com"}}}}

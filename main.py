@@ -1,5 +1,7 @@
 import sys
 
+from tabulate import tabulate
+
 from db.engine import QueryEngine
 from db.storage import StorageEngine
 
@@ -9,14 +11,11 @@ def print_formatted(result):
         if not result:
             print("Empty set (0 rows)")
             return
+
         keys = list(result[0].keys())
-        header = " | ".join(f"{k:12}" for k in keys)
-        print("-" * len(header))
-        print(header)
-        print("-" * len(header))
-        for row in result:
-            print(" | ".join(f"{row.get(k, '')!s:12}" for k in keys))
-        print("-" * len(header))
+        table_data = [[row.get(k, "") for k in keys] for row in result]
+
+        print(tabulate(table_data, headers=keys, tablefmt="psql"))
         print(f"({len(result)} rows)")
     elif isinstance(result, dict):
         formatted = ", ".join(f"{k}: {v}" for k, v in result.items())
@@ -31,7 +30,7 @@ def main():
 
     print("--- SQL DB Terminal CLI ---")
     print("Type your SQL commands. End commands with ';' or press Enter.")
-    print("Type 'exit' or 'quit' to close.\n")
+    print("Type '.exit', '.tables', or '.compact' for CLI commands.\n")
 
     buffer = ""
 
@@ -40,12 +39,36 @@ def main():
             prompt = "db> " if not buffer else "   -> "
             line = input(prompt).strip()
 
-            if line.lower() in ("exit", "quit"):
-                print("Goodbye!")
-                break
-
             if not line:
                 continue
+
+            if line.startswith("."):
+                cmd = line.lower()
+                if cmd == ".exit":
+                    print("Goodbye!")
+                    break
+                elif cmd == ".compact":
+                    storage.compact()
+                    print("Storage compacted successfully")
+                elif cmd == ".tables":
+                    tables = [
+                        [t[1:-6]]
+                        for t in engine.tables
+                        if t.startswith("$") and t.endswith("_table")
+                    ]
+                    if not tables:
+                        print("No tables found.")
+                    else:
+                        print(tabulate(tables, headers=["Table Name"], tablefmt="psql"))
+                else:
+                    print(f"Unknown command: {cmd}")
+
+                buffer = ""
+                continue
+
+            if not buffer and line.lower() in "exit":
+                print("Goodbye!")
+                break
 
             buffer += " " + line if buffer else line
 
