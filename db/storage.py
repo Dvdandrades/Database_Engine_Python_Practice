@@ -32,6 +32,7 @@ class StorageEngine:
             self._init_db()
         else:
             self._build_keydir()
+            self._recover_from_wal()
 
     def _init_db(self):
         with open(self.data_file, "wb") as f:
@@ -69,9 +70,54 @@ class StorageEngine:
             entry = json.dumps({"op": op, "key": key, "val": value})
             f.write(f"{entry}\n")
 
+    def _raw_put(self, key: str, value: dict):
+        data_bytes = json.dumps(value).encode("utf-8")
+        key_bytes = key.encode("utf-8")
+
+        with open(self.data_file, "ab") as f:
+            offset = f.tell()
+            f.write(struct.pack(">I", len(key_bytes)))
+            f.write(key_bytes)
+            f.write(struct.pack(">I", len(data_bytes)))
+            f.write(data_bytes)
+            total_len = f.tell() - offset
+
+        self.keydir[key] = (offset, total_len)
+
+    def _raw_delete(self, key: str):
+        key_bytes = key.encode("utf-8")
+
+        with open(self.data_file, "ab") as f:
+            f.write(struct.pack(">I", len(key_bytes)))
+            f.write(key_bytes)
+            f.write(struct.pack(">I", len(TOMBSTONE)))
+            f.write(TOMBSTONE)
+
+        self.keydir.pop(key, None)
+
     def clear_wal(self):
         if self.log_file.exists():
             self.log_file.unlink()
+
+    def _recover_from_wal(self):
+        if not self.log_file.exists():
+            return
+
+        print("Recovering data from WAL...")
+        with open(self.log_file, "r", encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    entry = json.loads(line)
+                    if entry["op"] == "PUT":
+                        self._raw_put(entry["key"], entry["val"])
+                    elif entry["op"] == "DELETE":
+                        self._raw_delete(entry["key"])
+                except (json.JSONDecodeError, KeyError):
+                    continue
+
+        self.clear_wal()
 
     def get(self, key: str) -> dict | None:
         if key not in self.keydir:
@@ -88,34 +134,14 @@ class StorageEngine:
 
     def put(self, key: str, value: dict):
         self.write_wal("PUT", key, value)
-
-        data_bytes = json.dumps(value).encode("utf-8")
-        key_bytes = key.encode("utf-8")
-
-        with open(self.data_file, "ab") as f:
-            offset = f.tell()
-            f.write(struct.pack(">I", len(key_bytes)))
-            f.write(key_bytes)
-            f.write(struct.pack(">I", len(data_bytes)))
-            f.write(data_bytes)
-            total_len = f.tell() - offset
-
-        self.keydir[key] = (offset, total_len)
+        self._raw_put(key, value)
 
     def delete(self, key: str):
         if key not in self.keydir:
             return
 
         self.write_wal("DELETE", key)
-        key_bytes = key.encode("utf-8")
-
-        with open(self.data_file, "ab") as f:
-            f.write(struct.pack(">I", len(key_bytes)))
-            f.write(key_bytes)
-            f.write(struct.pack(">I", len(TOMBSTONE)))
-            f.write(TOMBSTONE)
-
-        del self.keydir[key]
+        self._raw_delete(key)
 
     def compact(self):
         temp_file = self.db_path / "data_db.tmp"
