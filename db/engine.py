@@ -10,10 +10,24 @@ class QueryEngine:
     def __init__(self, storage: StorageEngine):
         self.storage = storage
         self.parser = QueryParser()
-        self.tables: dict[str, dict] = self.storage.get("__tables__") or {}
+        self.schema: dict[str, dict] = self.storage.get("__schema__") or {}
         self.index_manager = IndexManager()
         self.transaction_manager = TransactionManager()
         self.current_tx: Transaction | None = None
+
+    def _get_record(self, table_name: str, rid: int) -> dict | None:
+        return self.storage.get(f"{table_name}:{rid}")
+
+    def _get_all_records(self, table_name: str) -> dict:
+        records = {}
+        prefix = f"{table_name}:"
+        for key in self.storage.keydir:
+            if key.startswith(prefix):
+                rid = int(key.split(":")[1])
+                record = self.storage.get(key)
+                if record:
+                    records[rid] = record
+        return records
 
     def execute(self, sql: str) -> Any:
         query = self.parser.parse(sql)
@@ -66,7 +80,7 @@ class QueryEngine:
             return {"error": "No active transaction to commit"}
         tx_id = self.current_tx.tx_id
         self.transaction_manager.commit(tx_id)
-        self.storage.put("__tables__", self.tables)
+        self.storage.put("__schema__", self.schema)
         self.current_tx = None
         return {"transaction": tx_id, "status": "COMMITTED"}
 
@@ -78,21 +92,18 @@ class QueryEngine:
         affected_tables = set()
 
         for action in reversed(tx.undo_actions):
-            tbl = action["table"]
             raw_tbl = action["raw_table"]
             affected_tables.add(raw_tbl)
+            record_key = action["key"]
 
             if action["type"] == "INSERT":
-                rid = action["id"]
-                if rid in self.tables.get(tbl, {}):
-                    del self.tables[tbl][rid]
-            elif action["type"] == "UPDATE" or action["type"] == "DELETE":
-                rid = action["id"]
-                self.tables[tbl][rid] = action["old_record"]
+                self.storage.delete(record_key)
+            elif action["type"] in ("UPDATE", "DELETE"):
+                self.storage.put(record_key, action["old_record"])
 
         for raw_tbl in affected_tables:
             tbl_name = f"${raw_tbl}_table"
-            records = self.tables.get(tbl_name, {})
+            records = self._get_all_records(tbl_name)
             for field in self.index_manager.get_indexed_fields(raw_tbl):
                 self.index_manager.rebuild_index(raw_tbl, field, records)
 
@@ -103,7 +114,7 @@ class QueryEngine:
     def _execute_create_index(self, query: Query) -> dict:
         table_name = f"${query.table}_table"
 
-        if table_name not in self.tables:
+        if table_name not in self.schema:
             return {
                 "created_index": 0,
                 "error": f"Table '{query.table}' does not exist",
@@ -112,7 +123,7 @@ class QueryEngine:
         field = query.fields[0]
         index_name = self.index_manager.create_index(query.table, field)
 
-        records = self.tables[table_name]
+        records = self._get_all_records(table_name)
         indexed_count = 0
         for rid, record in records.items():
             if field in record:
@@ -124,17 +135,19 @@ class QueryEngine:
     def _execute_select(self, query: Query) -> list[dict]:
         table_name = f"${query.table}_table"
 
-        if table_name not in self.tables:
+        if table_name not in self.schema:
             return []
-
-        records = self.tables[table_name]
 
         candidate_rids = self._get_candidate_rids_from_index(query)
 
+        target_records = []
         if candidate_rids is not None:
-            target_records = [records[rid] for rid in candidate_rids if rid in records]
+            for rid in candidate_rids:
+                rec = self._get_record(table_name, rid)
+                if rec:
+                    target_records.append(rec)
         else:
-            target_records = records.values()
+            target_records = list(self._get_all_records(table_name).values())
 
         results = []
         for record in target_records:
@@ -151,20 +164,22 @@ class QueryEngine:
     def _execute_insert(self, query: Query) -> dict:
         table_name = f"${query.table}_table"
 
-        if table_name not in self.tables:
-            self.tables[table_name] = {}
+        if table_name not in self.schema:
+            return {"inserted": 0, "error": f"Table '{query.table}' does not exist"}
 
-        records = self.tables[table_name]
+        record_id = self.schema[table_name].get("next_id", 1)
+        self.schema[table_name]["next_id"] = record_id + 1
 
-        record_id = len(records) + 1
         record = {"id": record_id, **query.values}
+        record_key = f"{table_name}_{record_id}"
 
-        records[record_id] = record
+        self.storage.put(record_key, record)
 
         if self.current_tx:
             self.current_tx.add_undo_action(
                 {
                     "type": "INSERT",
+                    "key": record_key,
                     "table": table_name,
                     "raw_table": query.table,
                     "id": record_id,
@@ -183,10 +198,10 @@ class QueryEngine:
     def _execute_update(self, query: Query) -> dict:
         table_name = f"${query.table}_table"
 
-        if table_name not in self.tables:
+        if table_name not in self.schema:
             return {"updated": 0}
 
-        records = self.tables[table_name]
+        records = self._get_all_records(table_name)
         updated = 0
 
         for rid, record in records.items():
@@ -195,10 +210,14 @@ class QueryEngine:
                 for key, value in query.values.items():
                     record[key] = value
 
+                record_key = f"{table_name}:{rid}"
+                self.storage.put(record_key, record)
+
                 if self.current_tx:
                     self.current_tx.add_undo_action(
                         {
                             "type": "UPDATE",
+                            "key": record_key,
                             "table": table_name,
                             "raw_table": query.table,
                             "id": rid,
@@ -218,10 +237,10 @@ class QueryEngine:
     def _execute_delete(self, query: Query) -> dict:
         table_name = f"${query.table}_table"
 
-        if table_name not in self.tables:
+        if table_name not in self.schema:
             return {"deleted": 0}
 
-        records = self.tables[table_name]
+        records = self._get_all_records(table_name)
         deleted = 0
 
         to_delete = [
@@ -232,11 +251,14 @@ class QueryEngine:
 
         for rid in to_delete:
             old_record = records[rid].copy()
+            record_key = f"{table_name}:{rid}"
+            self.storage.delete(record_key)
             del records[rid]
             if self.current_tx:
                 self.current_tx.add_undo_action(
                     {
                         "type": "DELETE",
+                        "key": record_key,
                         "table": table_name,
                         "raw_table": query.table,
                         "id": rid,
@@ -255,10 +277,11 @@ class QueryEngine:
     def _execute_create(self, query: Query) -> dict:
         table_name = f"${query.table}_table"
 
-        if table_name in self.tables:
+        if table_name in self.schema:
             return {"created": 0, "error": "Table already exists"}
 
-        self.tables[table_name] = {}
+        self.schema[table_name] = {"next_id": 1}
+        self.storage.put("__schema__", self.schema)
 
         return {"created": 1}
 
