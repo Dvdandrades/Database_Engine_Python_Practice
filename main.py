@@ -53,7 +53,7 @@ def main():
                 elif cmd == ".tables":
                     tables = [
                         [t[1:-6]]
-                        for t in engine.tables
+                        for t in engine.schema
                         if t.startswith("$") and t.endswith("_table")
                     ]
                     if not tables:
