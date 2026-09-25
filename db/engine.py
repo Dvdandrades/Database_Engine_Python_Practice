@@ -171,7 +171,7 @@ class QueryEngine:
         self.schema[table_name]["next_id"] = record_id + 1
 
         record = {"id": record_id, **query.values}
-        record_key = f"{table_name}_{record_id}"
+        record_key = f"{table_name}:{record_id}"
 
         self.storage.put(record_key, record)
 
