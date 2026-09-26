@@ -14,6 +14,7 @@ class QueryEngine:
         self.index_manager = IndexManager()
         self.transaction_manager = TransactionManager()
         self.current_tx: Transaction | None = None
+        self._rebuild_indexes_on_startup()
 
     def _get_record(self, table_name: str, rid: int) -> dict | None:
         return self.storage.get(f"{table_name}:{rid}")
@@ -122,6 +123,12 @@ class QueryEngine:
 
         field = query.fields[0]
         index_name = self.index_manager.create_index(query.table, field)
+
+        if "indexes" not in self.schema[table_name]:
+            self.schema[table_name]["indexes"] = []
+        if field not in self.schema[table_name]["indexes"]:
+            self.schema[table_name]["indexes"].append(field)
+            self.storage.put("__schema__", self.schema)
 
         records = self._get_all_records(table_name)
         indexed_count = 0
@@ -322,3 +329,19 @@ class QueryEngine:
                     return False
 
         return True
+
+    def _rebuild_indexes_on_startup(self):
+        for table_name, table_info in self.schema.items():
+            if not table_name.startswith("$") or not table_name.endswith("_table"):
+                continue
+
+            indexes = table_info.get("indexes", [])
+            if not indexes:
+                continue
+
+            raw_table = table_name[1:-6]
+            records = self._get_all_records(table_name)
+
+            for field in indexes:
+                self.index_manager.create_index(raw_table, field)
+                self.index_manager.rebuild_index(raw_table, field, records)
