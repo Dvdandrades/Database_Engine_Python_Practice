@@ -296,39 +296,51 @@ class QueryEngine:
         if not query.conditions:
             return None
 
-        for field, cond in query.conditions.items():
-            if cond["op"] == "=":
-                index_name = f"${query.table}_${field}_idx"
-                if index_name in self.index_manager.indexes:
-                    rids = self.index_manager.search(index_name, cond["value"])
-                    return rids if rids is not None else []
+        if (
+            type(query.conditions).__name__ == "ConditionNode"
+            and query.conditions.op == "="
+        ):
+            field = query.conditions.left
+            value = query.conditions.right
+            index_name = f"${query.table}_${field}_idx"
+            if index_name in self.index_manager.indexes:
+                rids = self.index_manager.search(index_name, value)
+                return rids if rids is not None else []
 
         return None
 
-    def _matches_conditions(self, record: dict, conditions: dict) -> bool:
-        if not conditions:
+    def _matches_conditions(self, record: dict, node: Any) -> bool:
+        if node is None:
             return True
 
-        for field, condition in conditions.items():
+        if type(node).__name__ == "LogicalNode":
+            left_eval = self._matches_conditions(record, node.left)
+
+            if node.op == "AND":
+                return left_eval and self._matches_conditions(record, node.right)
+            elif node.op == "OR":
+                return left_eval or self._matches_conditions(record, node.right)
+
+        elif type(node).__name__ == "ConditionNode":
+            field = node.left
             if field not in record:
                 return False
 
-            op = condition["op"]
-            value = condition["value"]
+            op = node.op
+            value = str(node.right)
             record_value = str(record[field])
 
-            if op == "=" and record_value != value:
-                return False
-            if op == "!=" and record_value == value:
-                return False
+            if op == "=":
+                return record_value == value
+            if op == "!=":
+                return record_value != value
             if op == "LIKE":
                 import re
 
                 pattern = ".*".join(re.escape(part) for part in value.split("%"))
-                if not re.fullmatch(pattern, record_value):
-                    return False
+                return bool(re.fullmatch(pattern, record_value))
 
-        return True
+        return False
 
     def _rebuild_indexes_on_startup(self):
         for table_name, table_info in self.schema.items():
