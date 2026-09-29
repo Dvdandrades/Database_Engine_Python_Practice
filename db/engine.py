@@ -17,14 +17,21 @@ class QueryEngine:
         self._rebuild_indexes_on_startup()
 
     def _get_record(self, table_name: str, rid: int) -> dict | None:
-        return self.storage.get(f"{table_name}:{rid}")
+        key = f"{table_name}:{rid}"
+        if self.current_tx:
+            self.transaction_manager.acquire_lock(self.current_tx.tx_id, key, "SHARED")
+        return self.storage.get(key)
 
     def _get_all_records(self, table_name: str) -> dict:
         records = {}
         prefix = f"{table_name}:"
-        for key in self.storage.keydir:
+        for key in list(self.storage.keydir.keys()):
             if key.startswith(prefix):
                 rid = int(key.split(":")[1])
+                if self.current_tx:
+                    self.transaction_manager.acquire_lock(
+                        self.current_tx.tx_id, key, "SHARED"
+                    )
                 record = self.storage.get(key)
                 if record:
                     records[rid] = record
@@ -180,6 +187,11 @@ class QueryEngine:
         record = {"id": record_id, **query.values}
         record_key = f"{table_name}:{record_id}"
 
+        if self.current_tx:
+            self.transaction_manager.acquire_lock(
+                self.current_tx.tx_id, record_key, "EXCLUSIVE"
+            )
+
         self.storage.put(record_key, record)
 
         if self.current_tx:
@@ -213,6 +225,13 @@ class QueryEngine:
 
         for rid, record in records.items():
             if self._matches_conditions(record, query.conditions):
+                record_key = f"{table_name}:{rid}"
+
+                if self.current_tx:
+                    self.transaction_manager.acquire_lock(
+                        self.current_tx.tx_id, record_key, "EXCLUSIVE"
+                    )
+
                 old_record = record.copy()
                 for key, value in query.values.items():
                     record[key] = value
@@ -257,8 +276,14 @@ class QueryEngine:
         ]
 
         for rid in to_delete:
-            old_record = records[rid].copy()
             record_key = f"{table_name}:{rid}"
+
+            if self.current_tx:
+                self.transaction_manager.acquire_lock(
+                    self.current_tx.tx_id, record_key, "EXCLUSIVE"
+                )
+
+            old_record = records[rid].copy()
             self.storage.delete(record_key)
             del records[rid]
             if self.current_tx:
