@@ -24,7 +24,7 @@ class LockManager:
     def _get_or_create_lock(self, key: str) -> RecordLock:
         with self._lock:
             if key not in self._record_locks:
-                self._record_locks[key] = RecordLock
+                self._record_locks[key] = RecordLock()
             return self._record_locks[key]
 
     def acquire_read(self, tx_id: int, key: str, timeout: float = 5.0):
@@ -63,12 +63,12 @@ class LockManager:
             if not rlock:
                 continue
 
-        with rlock.condition:
-            if mode == "SHARED":
-                rlock.shared_owners.discard(tx_id)
-            elif mode == "EXCLUSIVE" and rlock.exclusive_owner == tx_id:
-                rlock.exclusive_owner = None
-            rlock.condition.notify_all()
+            with rlock.condition:
+                if mode == "SHARED":
+                    rlock.shared_owners.discard(tx_id)
+                elif mode == "EXCLUSIVE" and rlock.exclusive_owner == tx_id:
+                    rlock.exclusive_owner = None
+                rlock.condition.notify_all()
 
 
 class Transaction:
@@ -131,6 +131,9 @@ class TransactionManager:
             self._write_log(f"COMMIT {tx_id}")
 
             tx.commit()
+
+            self.lock_manager.release_locks(tx_id, tx.locks)
+            tx.locks.clear()
 
             return True
 
