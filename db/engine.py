@@ -1,8 +1,9 @@
 from typing import Any
 
+from db.storage.engine import StorageEngine
+
 from .index import IndexManager
 from .parser import Query, QueryParser
-from .storage import StorageEngine
 from .transaction import Transaction, TransactionManager
 
 

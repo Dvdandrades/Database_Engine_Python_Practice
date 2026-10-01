@@ -6,20 +6,6 @@ from typing import Any
 TOMBSTONE = b"__TOMBSTONE__"
 
 
-class Page:
-    PAGE_SIZE = 4096
-
-    def __init__(self, page_id: int = 0):
-        self.page_id = page_id
-        self.data = bytearray(self.PAGE_SIZE)
-
-    def read(self, offset: int, size: int) -> bytes:
-        return bytes(self.data[offset : offset + size])
-
-    def write(self, offset: int, data: bytes):
-        self.data[offset : offset + len(data)] = data
-
-
 class StorageEngine:
     def __init__(self, db_path: str):
         self.db_path = Path(db_path)

@@ -1,7 +1,7 @@
 import pytest
 
 from db.engine import QueryEngine
-from db.storage import StorageEngine
+from db.storage.engine import StorageEngine
 
 
 @pytest.fixture
