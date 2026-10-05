@@ -1,20 +1,20 @@
 from typing import Any
 
+from db.catalog.schema import SchemaManager
+from db.concurrency.transaction import TransactionManager
+from db.indexing.manager import IndexManager
 from db.parsing.parser import Query, QueryParser
 from db.storage.engine import StorageEngine
-
-from .index import IndexManager
-from .transaction import Transaction, TransactionManager
 
 
 class QueryEngine:
     def __init__(self, storage: StorageEngine):
         self.storage = storage
+        self.schema_manager = SchemaManager(storage)
         self.parser = QueryParser()
-        self.schema: dict[str, dict] = self.storage.get("__schema__") or {}
         self.index_manager = IndexManager()
         self.transaction_manager = TransactionManager()
-        self.current_tx: Transaction | None = None
+        self.current_tx = None
         self._rebuild_indexes_on_startup()
 
     def _get_record(self, table_name: str, rid: int) -> dict | None:
@@ -334,39 +334,6 @@ class QueryEngine:
                 return rids if rids is not None else []
 
         return None
-
-    def _matches_conditions(self, record: dict, node: Any) -> bool:
-        if node is None:
-            return True
-
-        if type(node).__name__ == "LogicalNode":
-            left_eval = self._matches_conditions(record, node.left)
-
-            if node.op == "AND":
-                return left_eval and self._matches_conditions(record, node.right)
-            elif node.op == "OR":
-                return left_eval or self._matches_conditions(record, node.right)
-
-        elif type(node).__name__ == "ConditionNode":
-            field = node.left
-            if field not in record:
-                return False
-
-            op = node.op
-            value = str(node.right)
-            record_value = str(record[field])
-
-            if op == "=":
-                return record_value == value
-            if op == "!=":
-                return record_value != value
-            if op == "LIKE":
-                import re
-
-                pattern = ".*".join(re.escape(part) for part in value.split("%"))
-                return bool(re.fullmatch(pattern, record_value))
-
-        return False
 
     def _rebuild_indexes_on_startup(self):
         for table_name, table_info in self.schema.items():
