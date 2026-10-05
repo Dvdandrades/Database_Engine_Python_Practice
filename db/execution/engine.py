@@ -6,16 +6,22 @@ from db.indexing.manager import IndexManager
 from db.parsing.parser import Query, QueryParser
 from db.storage.engine import StorageEngine
 
+from .evaluator import ConditionEvaluator
+
 
 class QueryEngine:
     def __init__(self, storage: StorageEngine):
         self.storage = storage
         self.schema_manager = SchemaManager(storage)
+        self.schema = self.schema_manager.schema
         self.parser = QueryParser()
         self.index_manager = IndexManager()
         self.transaction_manager = TransactionManager()
         self.current_tx = None
         self._rebuild_indexes_on_startup()
+
+    def _matches_conditions(self, record: dict, conditions: Any) -> bool:
+        return ConditionEvaluator.matches(record, conditions)
 
     def _get_record(self, table_name: str, rid: int) -> dict | None:
         key = f"{table_name}:{rid}"

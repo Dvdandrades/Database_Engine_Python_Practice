@@ -1,6 +1,6 @@
 import pytest
 
-from db.engine import QueryEngine
+from db.execution.engine import QueryEngine
 from db.storage.engine import StorageEngine
 
 
