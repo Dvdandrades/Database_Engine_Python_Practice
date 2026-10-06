@@ -18,32 +18,40 @@ class Lexer:
 
     def __init__(self, text: str):
         self.text = text.strip()
-        self.pos = 0
-        self.current_token = None
         self.tok_regex = "|".join(
             f"(?P<{name}>{pattern})" for name, pattern in self.TOKENS
         )
+        self.tokens = self._tokenize_all()
+        self.token_idx = 0
+        self.current_token = None
         self.advance()
 
+    def _tokenize_all(self) -> list[tuple[str, str]]:
+        tokens = []
+        pos = 0
+        regex = re.compile(self.tok_regex, re.IGNORECASE)
+
+        while pos < len(self.text):
+            match = regex.match(self.text, pos)
+            if not match:
+                raise ValueError(
+                    f"Unexpected character in position {pos}: {self.text[pos]}"
+                )
+
+            pos = match.end()
+            tok_type = match.lastgroup
+            tok_val = match.group(tok_type)
+
+            if tok_type != "WS":
+                tokens.append((tok_type, tok_val))
+
+        tokens.append(("EOF", None))
+        return tokens
+
     def advance(self):
-        if self.pos >= len(self.text):
-            self.current_token = ("EOF", None)
-            return
-
-        match = re.compile(self.tok_regex, re.IGNORECASE).match(self.text, self.pos)
-        if not match:
-            raise ValueError(
-                f"Unexpect character in position {self.pos}: {self.text[self.pos]}"
-            )
-
-        self.pos = match.end()
-        tok_type = match.lastgroup
-        tok_val = match.group(tok_type)
-
-        if tok_type == "WS":
-            self.advance()
-        else:
-            self.current_token = (tok_type, tok_val)
+        if self.token_idx < len(self.tokens):
+            self.current_token = self.tokens[self.token_idx]
+            self.token_idx += 1
 
     def consume(self, expected_type: str, expected_val: str | None = None) -> str:
         tok_type, tok_val = self.current_token

@@ -32,7 +32,7 @@ def test_create_table_and_insert(engine):
 def test_select_queries(engine):
     engine.execute("CREATE TABLE users")
     engine.execute(
-        "INSERT INTO users (name, email) VALUES ('David', ''david@example.com)"
+        "INSERT INTO users (name, email) VALUES ('David', 'david@example.com')"
     )
     engine.execute(
         "INSERT INTO users (name, email) VALUES ('Juan', 'juan@example.com')"
