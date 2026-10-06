@@ -3,8 +3,8 @@ import sys
 from tabulate import tabulate
 
 from cli.formatter import print_formatted
-from db.engine import QueryEngine
-from db.storage import StorageEngine
+from db.execution.engine import QueryEngine
+from db.storage.engine import StorageEngine
 
 
 def start_repl():
@@ -19,7 +19,7 @@ def start_repl():
 
     while True:
         try:
-            prompt = "db> " if not buffer else "   -> "
+            prompt = "db > " if not buffer else "   -> "
             line = input(prompt).strip()
 
             if not line:
@@ -44,7 +44,7 @@ def start_repl():
                     else:
                         print(tabulate(tables, headers=["Table Name"], tablefmt="psql"))
                 else:
-                    print(f"Unknown command: {cmd}")
+                    print(f"Unrecognized command: {cmd}")
 
                 buffer = ""
                 continue
