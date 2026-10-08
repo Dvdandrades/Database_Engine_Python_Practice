@@ -49,7 +49,11 @@ class BTree:
         new_child.keys = child.keys[self.degree :]
         new_child.values = child.values[self.degree :]
 
+        child.keys = child.keys[: self.degree - 1]
+        child.values = child.values[: self.degree - 1]
+
         if not child.leaf:
+            new_child.children = child.children[self.degree :]
             child.children = child.children[: self.degree]
 
         parent.children.insert(index + 1, new_child)
