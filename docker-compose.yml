@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  db-cli:
+    build: .
+    container_name: python_sql_db
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./db_data:/app/db_data
+    command: ["uv", "run", "main.py"]
+
+  db-tests:
+    build: .
+    container_name: python_sql_tests
+    volumes:
+      - ./db_data:/app/db_data
+    command: ["uv", "run", "pytest"]
